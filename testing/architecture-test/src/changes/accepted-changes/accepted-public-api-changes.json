@@ -1,3 +1,10 @@
 {
-    "acceptedApiChanges": []
+    "acceptedApiChanges": [
+        {
+            "type": "org.gradle.StartParameter",
+            "member": "Constructor org.gradle.StartParameter(java.lang.Void)",
+            "acceptation": "Internal-only constructor that centralizes creation of a parameterless StartParameter; not part of the advertised public API.",
+            "changes": []
+        }
+    ]
 }
