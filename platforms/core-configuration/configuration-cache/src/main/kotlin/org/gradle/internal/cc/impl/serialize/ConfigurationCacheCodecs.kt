@@ -19,6 +19,7 @@ package org.gradle.internal.cc.impl.serialize
 import org.gradle.api.file.FileSystemOperations
 import org.gradle.api.internal.DocumentationRegistry
 import org.gradle.api.internal.GradleInternal
+import org.gradle.api.internal.StartParameterInternal
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ArtifactSetToFileCollectionFactory
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.CapabilitySerializer
@@ -207,8 +208,13 @@ class DefaultConfigurationCacheCodecs(
     val javaSerializationEncodingLookup: JavaSerializationEncodingLookup,
     transformStepNodeFactory: TransformStepNodeFactory,
     problems: ProblemsInternal,
-    private val objectOpener: ObjectOpener
+    private val objectOpener: ObjectOpener,
+    startParameter: StartParameterInternal
 ) : ConfigurationCacheCodecs {
+
+    private
+    val serializeTaskLoggingListeners = !startParameter.isConfigurationCacheSkipTaskLoggingListenersSerialization
+
 
     private
     val parallelStore: Boolean = modelParameters.isConfigurationCacheParallelStore
@@ -371,7 +377,7 @@ class DefaultConfigurationCacheCodecs(
     override fun internalTypesCodec(): Codec<Any?> = internalTypesBindings.append {
         val userTypesCodec = userTypesCodec()
 
-        bind(TaskNodeCodec(userTypesCodec))
+        bind(TaskNodeCodec(userTypesCodec, serializeTaskLoggingListeners))
         bind(DelegatingCodec<TransformStepNode>(userTypesCodec))
         bind(org.gradle.internal.serialize.codecs.core.ActionNodeCodec(userTypesCodec))
         bind(OrdinalNodeCodec)
