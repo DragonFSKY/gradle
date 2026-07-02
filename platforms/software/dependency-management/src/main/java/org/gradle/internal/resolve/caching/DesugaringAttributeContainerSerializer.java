@@ -85,15 +85,12 @@ public class DesugaringAttributeContainerSerializer implements AttributeContaine
             } else if (attribute.getType().equals(Integer.class)){
                 encoder.writeByte(INTEGER_ATTRIBUTE);
                 encoder.writeInt((Integer) container.getAttribute(attribute));
-            } else if (Named.class.isAssignableFrom(attribute.getType())) {
+            } else {
+                // Attribute.of rejects any type that is not String/Boolean/Integer/Named at
+                // creation time, so this branch is reached only via Named subtypes.
                 Named attributeValue = (Named) container.getAttribute(attribute);
                 encoder.writeByte(DESUGARED_ATTRIBUTE);
                 encoder.writeString(attributeValue.getName());
-            } else {
-                throw new IllegalArgumentException(String.format(
-                    "Unsupported type '%s' for attribute '%s'. Attribute values must be of type String, Boolean, or Integer, or implement %s.",
-                    attribute.getType().getName(), attribute.getName(), Named.class.getName()
-                ));
             }
         }
     }

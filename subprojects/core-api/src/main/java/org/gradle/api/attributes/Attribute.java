@@ -25,10 +25,8 @@ import org.gradle.api.Named;
  * and can potentially be pooled. Attributes can be created using the {@link #of(String, Class) factory method}.
  * <p>
  * Supported attribute value types are: {@code String}, {@code Boolean}, {@code Integer}, and any type
- * implementing {@link Named}.
- * <p>
- * Plain Java {@link Enum} types (that do <strong>NOT</strong> implement {@link Named}) are
- * <strong>NOT</strong> supported.
+ * implementing {@link Named}. {@link #of(String, Class)} throws {@link IllegalAttributeTypeException}
+ * for any other type — including plain Java {@link Enum} types that do not implement {@link Named}.
  *
  * @param <T> the type of the named attribute
  *
@@ -45,12 +43,26 @@ public class Attribute<T> implements Named {
      * of {@link Attribute}, so consumers are required to compare the attributes with the {@link #equals(Object)}
      * method.
      * @param name the name of the attribute
-     * @param type the class of the attribute
+     * @param type the class of the attribute; must be {@code String}, {@code Boolean}, {@code Integer}, or a
+     *             subtype of {@link Named}
      * @param <T> the type of the attribute
      * @return an attribute with the given name and type
+     * @throws IllegalAttributeTypeException if {@code type} is not one of the supported attribute value types
      */
     public static <T> Attribute<T> of(String name, Class<T> type) {
+        validateSupportedType(name, type);
         return new Attribute<T>(name, type);
+    }
+
+    private static void validateSupportedType(String name, Class<?> type) {
+        if (type == String.class || type == Boolean.class || type == Integer.class || Named.class.isAssignableFrom(type)) {
+            return;
+        }
+        throwIllegalAttributeType(name, type);
+    }
+
+    private static void throwIllegalAttributeType(String name, Class<?> type) {
+        throw new IllegalAttributeTypeException(name, type);
     }
 
     /**

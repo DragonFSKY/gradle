@@ -24,38 +24,36 @@ import spock.lang.Issue
  * implement {@link org.gradle.api.Named}) are <strong>NOT</strong> supported as attribute values in Gradle's
  * dependency-resolution and publishing pipelines.
  * <p>
- * Attribute values that are not {@code String}, {@code Boolean}, or {@code Integer} are
- * desugared by {@link org.gradle.internal.resolve.caching.DesugaringAttributeContainerSerializer}
- * to their {@link org.gradle.api.Named#getName()} name. Any path that reaches that serializer
- * with a plain enum now throws {@link IllegalArgumentException} — most notably the
- * task-graph-time resolution of a detached configuration with external dependencies.
+ * {@link org.gradle.api.attributes.Attribute#of(String, Class)} validates the requested attribute
+ * type up front: it accepts {@code String}, {@code Boolean}, {@code Integer}, and any type
+ * implementing {@link org.gradle.api.Named}. Any other type — including plain Java {@code Enum}
+ * types — is rejected with {@link IllegalArgumentException} at declaration time, before Gradle
+ * ever attempts to configure a configuration or resolve a dependency graph.
  * <p>
- * In practice most other paths accept plain enums today because they bypass the desugaring
- * serializer. Those paths still work, but relying on them is unsupported and depends on which
- * serialization route Gradle happens to pick for the request. The safe path is to have the enum
- * implement {@code Named}, at which point every path — including the desugaring serializer —
- * accepts it.
+ * A Named-implementing enum ({@code enum X implements Named}) delegating {@code getName()} to the
+ * built-in {@code name()} is the supported way to use an enum as an attribute value.
  * <p>
  * Each test is parameterized with two enum flavors:
  * <ul>
  *   <li>{@code PLAIN} — a bare {@code enum MyEnum { FOO, BAR }} that does NOT implement
- *       {@link org.gradle.api.Named}. Unsupported: works only on paths that never reach the
- *       desugaring serializer.</li>
+ *       {@link org.gradle.api.Named}. Rejected by {@code Attribute.of} at declaration time.</li>
  *   <li>{@code NAMED} — an {@code enum MyEnum implements Named} that delegates
- *       {@code getName()} to the built-in {@code name()}. Supported: works on all paths.</li>
+ *       {@code getName()} to the built-in {@code name()}. Accepted; works end-to-end.</li>
  * </ul>
  * <p>
- * Tests are organized into two main regions:
+ * Tests are organized into two regions:
  * <ul>
- *   <li><b>enums succeed</b> — paths that never cross the desugaring serializer. Both flavors
- *       currently pass, but only the Named-implementing flavor is intended to be relied on.</li>
- *   <li><b>enums fail</b> — the ES-style task-graph-resolution path (plain fails with the new
- *       serializer error), plus enum-semantics consequences that fail regardless of whether
- *       the enum implements {@code Named} (compile-time-closed constants, invalid GMM values).</li>
+ *   <li><b>enums succeed</b> — valid usage patterns. The Named row exercises the pattern
+ *       end-to-end. The plain row exercises {@code Attribute.of}'s type validation: build
+ *       script evaluation fails immediately with the Unsupported-type message.</li>
+ *   <li><b>enums fail</b> — enum-semantics consequences (compile-time-closed constants, invalid
+ *       GMM values). Both flavors fail, but for different reasons: plain enums at
+ *       {@code Attribute.of}, Named enums at the JDK's {@code Enum.valueOf}.</li>
  * </ul>
  */
 @Issue("https://github.com/gradle/gradle/issues/38242")
 final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
+    // region setup
     // Enum declaration templates injected into build scripts. Each declares a top-level
     // `MyEnum` type with constants FOO and BAR. The PLAIN flavor is a bare enum. The NAMED
     // flavor implements `org.gradle.api.Named` (default-imported in build scripts) by
@@ -76,10 +74,32 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
     private static final String PLAIN_DESC = "plain Enum"
     private static final String NAMED_DESC = "Named-implementing Enum"
 
+    // Expected root-cause message when Attribute.of rejects a plain enum type.
+    private static final String UNSUPPORTED_TYPE_MSG = "Unsupported type 'MyEnum' for attribute 'myEnumAttribute'. Attribute values must be of type String, Boolean, or Integer, or implement org.gradle.api.Named."
+
+    /**
+     * Runs the given task and asserts the expected outcome depending on whether the enum
+     * flavor under test implements {@link org.gradle.api.Named}. Named-implementing enums
+     * are expected to succeed and produce the given output lines. Plain enums are expected
+     * to fail at the {@link org.gradle.api.attributes.Attribute#of(String, Class)} call
+     * with {@link #UNSUPPORTED_TYPE_MSG} as the failure cause.
+     */
+    private void expectResolve(String taskName, boolean implementsNamed, List<String> expectedOutputs = []) {
+        if (implementsNamed) {
+            succeeds(taskName)
+            expectedOutputs.each { outputContains(it) }
+        } else {
+            fails(taskName)
+            failure.assertHasCause(UNSUPPORTED_TYPE_MSG)
+        }
+    }
+    // endregion setup
+
     // region enums succeed
     // -------------------------------------------------------------------------
-    // These tests exercise paths that never cross DesugaringAttributeContainerSerializer.
-    // Both PLAIN and NAMED flavors pass today.
+    // Every test in this region exercises a valid Gradle attribute-usage pattern.
+    // Named-implementing enums pass end-to-end. Plain enums are rejected at
+    // Attribute.of during script evaluation with UNSUPPORTED_TYPE_MSG.
     // -------------------------------------------------------------------------
     def "in-memory attribute matching accepts a #enumDesc as an attribute value"() {
         given:
@@ -125,13 +145,12 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
         """)
 
         expect:
-        succeeds(":consumer:resolve")
-        outputContains("Resolved: output.txt")
+        expectResolve(":consumer:resolve", implementsNamed, ["Resolved: output.txt"])
 
         where:
-        enumDesc   | enumDecl
-        PLAIN_DESC | PLAIN_ENUM
-        NAMED_DESC | NAMED_ENUM
+        enumDesc   | enumDecl    | implementsNamed
+        PLAIN_DESC | PLAIN_ENUM  | false
+        NAMED_DESC | NAMED_ENUM  | true
     }
 
     def "AttributeCompatibilityRule typed on a #enumDesc makes candidate values compatible"() {
@@ -190,13 +209,12 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
         """)
 
         expect:
-        succeeds(":consumer:resolve")
-        outputContains("Resolved: output.txt")
+        expectResolve(":consumer:resolve", implementsNamed, ["Resolved: output.txt"])
 
         where:
-        enumDesc   | enumDecl
-        PLAIN_DESC | PLAIN_ENUM
-        NAMED_DESC | NAMED_ENUM
+        enumDesc   | enumDecl    | implementsNamed
+        PLAIN_DESC | PLAIN_ENUM  | false
+        NAMED_DESC | NAMED_ENUM  | true
     }
 
     def "AttributeDisambiguationRule typed on a #enumDesc picks a candidate"() {
@@ -268,13 +286,12 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
         """)
 
         expect:
-        succeeds(":consumer:resolve")
-        outputContains("Resolved: bar.txt")
+        expectResolve(":consumer:resolve", implementsNamed, ["Resolved: bar.txt"])
 
         where:
-        enumDesc   | enumDecl
-        PLAIN_DESC | PLAIN_ENUM
-        NAMED_DESC | NAMED_ENUM
+        enumDesc   | enumDecl    | implementsNamed
+        PLAIN_DESC | PLAIN_ENUM  | false
+        NAMED_DESC | NAMED_ENUM  | true
     }
 
     def "supplying a #enumDesc attribute value via a lazy Provider works end-to-end"() {
@@ -325,13 +342,12 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
         """)
 
         expect:
-        succeeds(":consumer:resolve")
-        outputContains("Resolved: output.txt")
+        expectResolve(":consumer:resolve", implementsNamed, ["Resolved: output.txt"])
 
         where:
-        enumDesc   | enumDecl
-        PLAIN_DESC | PLAIN_ENUM
-        NAMED_DESC | NAMED_ENUM
+        enumDesc   | enumDecl    | implementsNamed
+        PLAIN_DESC | PLAIN_ENUM  | false
+        NAMED_DESC | NAMED_ENUM  | true
     }
 
     def "materializing resolutionResult with a #enumDesc on a local project dependency"() {
@@ -382,13 +398,12 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
         """)
 
         expect:
-        succeeds(":consumer:resolve")
-        outputContains("Dep: project ':producer'")
+        expectResolve(":consumer:resolve", implementsNamed, ["Dep: project ':producer'"])
 
         where:
-        enumDesc   | enumDecl
-        PLAIN_DESC | PLAIN_ENUM
-        NAMED_DESC | NAMED_ENUM
+        enumDesc   | enumDecl    | implementsNamed
+        PLAIN_DESC | PLAIN_ENUM  | false
+        NAMED_DESC | NAMED_ENUM  | true
     }
 
     def "consuming a Maven-published variant with a #enumDesc-typed request attribute"() {
@@ -430,13 +445,12 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
         """)
 
         expect:
-        succeeds("resolve")
-        outputContains("Resolved: producer-1.0.jar")
+        expectResolve("resolve", implementsNamed, ["Resolved: producer-1.0.jar"])
 
         where:
-        enumDesc   | enumDecl
-        PLAIN_DESC | PLAIN_ENUM
-        NAMED_DESC | NAMED_ENUM
+        enumDesc   | enumDecl    | implementsNamed
+        PLAIN_DESC | PLAIN_ENUM  | false
+        NAMED_DESC | NAMED_ENUM  | true
     }
 
     def "consuming an Ivy-published variant with a #enumDesc-typed request attribute"() {
@@ -479,13 +493,12 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
         """)
 
         expect:
-        succeeds("resolve")
-        outputContains("Resolved: ")
+        expectResolve("resolve", implementsNamed, ["Resolved: "])
 
         where:
-        enumDesc   | enumDecl
-        PLAIN_DESC | PLAIN_ENUM
-        NAMED_DESC | NAMED_ENUM
+        enumDesc   | enumDecl    | implementsNamed
+        PLAIN_DESC | PLAIN_ENUM  | false
+        NAMED_DESC | NAMED_ENUM  | true
     }
 
     def "withVariantReselection using a #enumDesc as the reselection attribute"() {
@@ -533,13 +546,12 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
         """)
 
         expect:
-        succeeds("resolve")
-        outputContains("Reselected: producer-1.0-bar.jar")
+        expectResolve("resolve", implementsNamed, ["Reselected: producer-1.0-bar.jar"])
 
         where:
-        enumDesc   | enumDecl
-        PLAIN_DESC | PLAIN_ENUM
-        NAMED_DESC | NAMED_ENUM
+        enumDesc   | enumDecl    | implementsNamed
+        PLAIN_DESC | PLAIN_ENUM  | false
+        NAMED_DESC | NAMED_ENUM  | true
     }
 
     def "config-cache round-trip on a task holding a resolvable configuration with a #enumDesc"() {
@@ -596,14 +608,12 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
         """)
 
         expect:
-        succeeds(":consumer:resolve")
-        outputContains("Enum: FOO")
-        outputContains("Resolved: output.txt")
+        expectResolve(":consumer:resolve", implementsNamed, ["Enum: FOO", "Resolved: output.txt"])
 
         where:
-        enumDesc   | enumDecl
-        PLAIN_DESC | PLAIN_ENUM
-        NAMED_DESC | NAMED_ENUM
+        enumDesc   | enumDecl    | implementsNamed
+        PLAIN_DESC | PLAIN_ENUM  | false
+        NAMED_DESC | NAMED_ENUM  | true
     }
 
     // region enum-as-JVM-singleton
@@ -667,13 +677,12 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
         """)
 
         expect:
-        succeeds(":consumer:resolve")
-        outputContains("Consumer-classloader singleton: OK")
+        expectResolve(":consumer:resolve", implementsNamed, ["Consumer-classloader singleton: OK"])
 
         where:
-        enumDesc   | enumDecl
-        PLAIN_DESC | PLAIN_ENUM
-        NAMED_DESC | NAMED_ENUM
+        enumDesc   | enumDecl    | implementsNamed
+        PLAIN_DESC | PLAIN_ENUM  | false
+        NAMED_DESC | NAMED_ENUM  | true
     }
 
     def "consequence (#enumDesc): enum with anonymous per-constant inner-class bodies works via getDeclaringClass"() {
@@ -723,22 +732,21 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
         """)
 
         expect:
-        succeeds(":consumer:resolve")
-        outputContains("Resolved: output.txt")
+        expectResolve(":consumer:resolve", implementsNamed, ["Resolved: output.txt"])
 
         where:
-        enumDesc                | enumDecl
+        enumDesc                | enumDecl                                                         | implementsNamed
         "plain Enum with body"  | """enum MyEnum {
                                        FOO { @Override String describe() { return "the-foo" } },
                                        BAR { @Override String describe() { return "the-bar" } };
                                        abstract String describe()
-                                   }"""
+                                   }"""                                                            | false
         "Named Enum with body"  | """enum MyEnum implements Named {
                                        FOO { @Override String describe() { return "the-foo" } },
                                        BAR { @Override String describe() { return "the-bar" } };
                                        abstract String describe()
                                        @Override String getName() { return name() }
-                                   }"""
+                                   }"""                                                            | true
     }
 
     def "consequence (#enumDesc): config-cache save-and-reuse preserves the attribute value across script re-parse"() {
@@ -789,34 +797,30 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
         """)
 
         expect: "the configCacheIntegTest task variant already replays every test through configuration-cache save+load; a single successful run here proves the enum attribute survives that round-trip"
-        succeeds(":consumer:resolve")
-        outputContains("Resolved: output.txt")
+        expectResolve(":consumer:resolve", implementsNamed, ["Resolved: output.txt"])
 
         where:
-        enumDesc   | enumDecl
-        PLAIN_DESC | PLAIN_ENUM
-        NAMED_DESC | NAMED_ENUM
+        enumDesc   | enumDecl    | implementsNamed
+        PLAIN_DESC | PLAIN_ENUM  | false
+        NAMED_DESC | NAMED_ENUM  | true
     }
     // endregion enum-as-JVM-singleton
     // endregion enums succeed
 
     // region enums fail
     // -------------------------------------------------------------------------
-    // Paths that DO cross DesugaringAttributeContainerSerializer (the ES-detached
-    // scenario), plus enum-semantics consequences that fail regardless of whether
-    // the enum implements Named.
+    // The reported detached-configuration regression (now caught up front by
+    // Attribute.of), plus enum-semantics consequences where both flavors fail — plain at
+    // Attribute.of, Named at the JDK's Enum.valueOf when the wire value doesn't match a
+    // constant of the requested enum type.
     // -------------------------------------------------------------------------
     def "task-input on a detached configuration with a #enumDesc attribute value (regression from Gradle 9.5.1)"() {
         // Reproducer for the ClassCastException reported by the Elasticsearch team:
-        // detached configuration + external Maven dependency + task inputs.files →
-        // triggers task-graph-time resolution which streams the graph through
-        // StreamingResolutionResultBuilder → DesugaringAttributeContainerSerializer →
-        // the plain enum is rejected with the new Unsupported-type message.
-        //
-        // The IAE raised by the serializer is caught inside DefaultBinaryStore's write
-        // path and rewrapped as "Problems writing to Binary store" — the underlying
-        // cause is still the Unsupported-type IAE, but the user-facing message shows
-        // the wrapper only. A Named-implementing enum succeeds cleanly.
+        // With enforcement now at Attribute.of (invoked during script evaluation), a plain
+        // enum is rejected before Gradle even attempts to configure the detached
+        // configuration. The user-facing error is the Unsupported-type IAE, with no need
+        // to trace through DesugaringAttributeContainerSerializer or DefaultBinaryStore
+        // wrapping. A Named-implementing enum succeeds end-to-end.
         given:
         mavenRepo.module("org.example", "producer", "1.0").publish()
 
@@ -842,12 +846,7 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
         """)
 
         expect:
-        if (implementsNamed) {
-            succeeds("myTask")
-        } else {
-            fails("myTask")
-            failure.assertHasCause("Problems writing to Binary store")
-        }
+        expectResolve("myTask", implementsNamed)
 
         where:
         enumDesc   | enumDecl    | implementsNamed
@@ -905,12 +904,12 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
 
         expect:
         fails(":consumer:resolve")
-        failure.assertHasCause("No enum constant MyEnum.BAR")
+        failure.assertHasCause(expectedCause)
 
         where:
-        enumDesc             | enumDeclProducer                                                                        | enumDeclConsumer
-        "plain Enum"         | "enum MyEnum { FOO, BAR }"                                                              | "enum MyEnum { FOO }"
-        "Named-implementing" | "enum MyEnum implements Named { FOO, BAR;\n@Override String getName() { return name() } }" | "enum MyEnum implements Named { FOO;\n@Override String getName() { return name() } }"
+        enumDesc             | enumDeclProducer                                                                          | enumDeclConsumer                                                                     | expectedCause
+        "plain Enum"         | "enum MyEnum { FOO, BAR }"                                                                | "enum MyEnum { FOO }"                                                                | UNSUPPORTED_TYPE_MSG
+        "Named-implementing" | "enum MyEnum implements Named { FOO, BAR;\n@Override String getName() { return name() } }" | "enum MyEnum implements Named { FOO;\n@Override String getName() { return name() } }" | "No enum constant MyEnum.BAR"
     }
 
     def "consequence (#enumDesc): GMM value that is not a valid enum constant fails coercion"() {
@@ -957,12 +956,12 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
 
         expect:
         fails("resolve")
-        failure.assertHasCause("No enum constant MyEnum.NOT_A_CONSTANT")
+        failure.assertHasCause(expectedCause)
 
         where:
-        enumDesc   | enumDecl
-        PLAIN_DESC | PLAIN_ENUM
-        NAMED_DESC | NAMED_ENUM
+        enumDesc   | enumDecl    | expectedCause
+        PLAIN_DESC | PLAIN_ENUM  | UNSUPPORTED_TYPE_MSG
+        NAMED_DESC | NAMED_ENUM  | "No enum constant MyEnum.NOT_A_CONSTANT"
     }
     // endregion
 }

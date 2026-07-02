@@ -4,6 +4,7 @@ Class <org.gradle.api.ExtensiblePolymorphicDomainObjectContainer> extends/implem
 Class <org.gradle.api.ProjectConfigurationException> extends/implements org.gradle.internal.exceptions.DefaultMultiCauseException that is Gradle Internal API in (ProjectConfigurationException.java:0)
 Class <org.gradle.api.artifacts.ResolveException> extends/implements org.gradle.internal.exceptions.DefaultMultiCauseException that is Gradle Internal API in (ResolveException.java:0)
 Class <org.gradle.api.artifacts.transform.TransformParameters$None> extends/implements org.gradle.api.internal.parameters.NoneParameters that is Gradle Internal API in (TransformParameters.java:0)
+Class <org.gradle.api.attributes.IllegalAttributeTypeException> extends/implements org.gradle.internal.exceptions.ResolutionProvider that is Gradle Internal API in (IllegalAttributeTypeException.java:0)
 Class <org.gradle.api.flow.FlowParameters$None> extends/implements org.gradle.api.internal.parameters.NoneParameters that is Gradle Internal API in (FlowParameters.java:0)
 Class <org.gradle.api.plugins.quality.CheckstylePlugin> extends/implements org.gradle.api.plugins.quality.internal.AbstractCodeQualityPlugin that is Gradle Internal API in (CheckstylePlugin.java:0)
 Class <org.gradle.api.plugins.quality.CodeNarcPlugin> extends/implements org.gradle.api.plugins.quality.internal.AbstractCodeQualityPlugin that is Gradle Internal API in (CodeNarcPlugin.java:0)
