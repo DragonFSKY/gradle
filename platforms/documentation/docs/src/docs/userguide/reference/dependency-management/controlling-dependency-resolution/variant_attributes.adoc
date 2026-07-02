@@ -280,8 +280,8 @@ include::sample[dir="snippets/reference/dependency-management/controlling-depend
 include::sample[dir="snippets/reference/dependency-management/controlling-dependency-resolution/attributeMatching/groovy",files="build.gradle[tags=define_attribute]"]
 ====
 
-Attribute types support most Java primitive classes; such as `String` and `Integer`.
-Or anything extending `org.gradle.api.Named`.
+Attribute types support most Java primitive classes; such as `String`, `Boolean`, and `Integer`.
+They also support any type extending `org.gradle.api.Named` and any Java `Enum` type.
 
 Attributes should always be declared in the _attribute schema_ found on the `dependencies` handler:
 

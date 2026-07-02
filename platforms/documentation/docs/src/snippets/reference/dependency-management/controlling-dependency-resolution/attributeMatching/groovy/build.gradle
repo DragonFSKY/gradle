@@ -87,6 +87,9 @@ configurations {
 def myAttribute = Attribute.of("my.attribute.name", String)
 // An attribute of type `Usage`
 def myUsage = Attribute.of("my.usage.attribute", Usage)
+// An attribute of an `Enum` type
+enum MyEnum { FOO, BAR }
+def myEnumAttribute = Attribute.of("my.enum.attribute", MyEnum)
 // end::define_attribute[]
 
 // tag::register-attributes[]

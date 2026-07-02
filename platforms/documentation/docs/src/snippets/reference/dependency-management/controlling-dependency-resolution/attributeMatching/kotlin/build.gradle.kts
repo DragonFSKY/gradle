@@ -84,6 +84,9 @@ configurations {
 val myAttribute = Attribute.of("my.attribute.name", String::class.java)
 // An attribute of type `Usage`
 val myUsage = Attribute.of("my.usage.attribute", Usage::class.java)
+// An attribute of an `Enum` type
+enum class MyEnum { FOO, BAR }
+val myEnumAttribute = Attribute.of("my.enum.attribute", MyEnum::class.java)
 // end::define_attribute[]
 
 // tag::register-attributes[]
