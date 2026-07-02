@@ -281,7 +281,8 @@ include::sample[dir="snippets/reference/dependency-management/controlling-depend
 ====
 
 Attribute types support most Java primitive classes; such as `String`, `Boolean`, and `Integer`.
-They also support any type extending `org.gradle.api.Named` and any Java `Enum` type.
+Or anything extending `org.gradle.api.Named`.
+Plain Java `Enum` types (that do not implement `Named`) are **not** supported as attribute value types — resolution and publishing paths that desugar attributes require the value type to implement `Named`.
 
 Attributes should always be declared in the _attribute schema_ found on the `dependencies` handler:
 

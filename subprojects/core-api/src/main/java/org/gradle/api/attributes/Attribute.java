@@ -24,8 +24,11 @@ import org.gradle.api.Named;
  * attribute, but only represent the identity of the attribute. It means that an attribute must be immutable
  * and can potentially be pooled. Attributes can be created using the {@link #of(String, Class) factory method}.
  * <p>
- * Supported attribute value types are: {@code String}, {@code Boolean}, {@code Integer}, any type
- * implementing {@link Named}, and any Java {@link Enum} type.
+ * Supported attribute value types are: {@code String}, {@code Boolean}, {@code Integer}, and any type
+ * implementing {@link Named}.
+ * <p>
+ * Plain Java {@link Enum} types (that do <strong>NOT</strong> implement {@link Named}) are
+ * <strong>NOT</strong> supported.
  *
  * @param <T> the type of the named attribute
  *
