@@ -36,3 +36,13 @@ dependencies {
         because("RemovalReportWorkActionTest parses Kotlin sources via KotlinSourceParser")
     }
 }
+
+configurations.testRuntimeClasspath {
+    // The kotlin-gradle-plugin jar bundles a partial, gradle-patched subset of the shaded
+    // `org.jetbrains.kotlin.com.intellij.*` classes. Its MockProject implements
+    // ComponentManagerEx, an interface that jar does NOT bundle, so when it shadows the complete
+    // classes from kotlin-compiler-embeddable, constructing KotlinCoreProjectEnvironment fails
+    // with NoClassDefFoundError. The test only needs the compiler-embeddable, so keep kgp off the
+    // test runtime classpath to let the complete embeddable classes win.
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-gradle-plugin")
+}
