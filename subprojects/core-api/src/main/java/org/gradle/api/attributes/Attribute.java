@@ -24,9 +24,10 @@ import org.gradle.api.Named;
  * attribute, but only represent the identity of the attribute. It means that an attribute must be immutable
  * and can potentially be pooled. Attributes can be created using the {@link #of(String, Class) factory method}.
  * <p>
- * Supported attribute value types are: {@code String}, {@code Boolean}, {@code Integer}, and any type
- * implementing {@link Named}. {@link #of(String, Class)} throws {@link IllegalAttributeTypeException}
- * for any other type — including plain Java {@link Enum} types that do not implement {@link Named}.
+ * Supported attribute value types are: {@code String}, {@code Boolean}, any subtype of {@link Number},
+ * and any type implementing {@link Named}. {@link #of(String, Class)} throws
+ * {@link IllegalAttributeTypeException} for any other type — including plain Java {@link Enum} types
+ * that do not implement {@link Named}.
  *
  * @param <T> the type of the named attribute
  *
@@ -43,8 +44,8 @@ public class Attribute<T> implements Named {
      * of {@link Attribute}, so consumers are required to compare the attributes with the {@link #equals(Object)}
      * method.
      * @param name the name of the attribute
-     * @param type the class of the attribute; must be {@code String}, {@code Boolean}, {@code Integer}, or a
-     *             subtype of {@link Named}
+     * @param type the class of the attribute; must be {@code String}, {@code Boolean}, a subtype of
+     *             {@link Number}, or a subtype of {@link Named}
      * @param <T> the type of the attribute
      * @return an attribute with the given name and type
      * @throws IllegalAttributeTypeException if {@code type} is not one of the supported attribute value types
@@ -55,7 +56,7 @@ public class Attribute<T> implements Named {
     }
 
     private static void validateSupportedType(String name, Class<?> type) {
-        if (type == String.class || type == Boolean.class || type == Integer.class || Named.class.isAssignableFrom(type)) {
+        if (type == String.class || type == Boolean.class || Number.class.isAssignableFrom(type) || Named.class.isAssignableFrom(type)) {
             return;
         }
         throwIllegalAttributeType(name, type);

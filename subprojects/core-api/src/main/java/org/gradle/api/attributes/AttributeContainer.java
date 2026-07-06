@@ -40,8 +40,8 @@ import java.util.Set;
  * It is not allowed to have two attributes with the same name but different types in
  * the container.
  * <p>
- * Supported attribute value types are: {@code String}, {@code Boolean}, {@code Integer}, and any type
- * implementing {@link Named}.
+ * Supported attribute value types are: {@code String}, {@code Boolean}, any subtype of {@link Number},
+ * and any type implementing {@link Named}.
  * <p>
  * Plain Java {@link Enum} types (that do <strong>NOT</strong> implement {@link Named}) are
  * <strong>NOT</strong> supported.

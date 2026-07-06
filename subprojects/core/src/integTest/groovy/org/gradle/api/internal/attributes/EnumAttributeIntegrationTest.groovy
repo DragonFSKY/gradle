@@ -75,7 +75,7 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
     private static final String NAMED_DESC = "Named-implementing Enum"
 
     // Expected root-cause message when Attribute.of rejects a plain enum type.
-    private static final String UNSUPPORTED_TYPE_MSG = "Unsupported type 'MyEnum' for attribute 'myEnumAttribute'. Attribute values must be of type String, Boolean, or Integer, or implement org.gradle.api.Named."
+    private static final String UNSUPPORTED_TYPE_MSG = "Unsupported type 'MyEnum' for attribute 'myEnumAttribute'. Attribute values must be of type String, Boolean, a subtype of Number, or implement org.gradle.api.Named."
 
     /**
      * Runs the given task and asserts the expected outcome depending on whether the enum

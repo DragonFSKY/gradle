@@ -27,8 +27,8 @@ import java.util.List;
 
 /**
  * Thrown by {@link Attribute#of(String, Class)} when the requested attribute value type is not
- * one of the supported types: {@code String}, {@code Boolean}, {@code Integer}, or a subtype of
- * {@link Named}.
+ * one of the supported types: {@code String}, {@code Boolean}, a subtype of {@link Number}, or a
+ * subtype of {@link Named}.
  * <p>
  * The exception always provides a resolution linking to the variant-attributes documentation.
  * When the offending type is a plain Java {@link Enum} that does not implement {@link Named}, an
@@ -47,7 +47,7 @@ public final class IllegalAttributeTypeException extends IllegalArgumentExceptio
 
     private static String buildMessage(String attributeName, Class<?> type) {
         return String.format(
-            "Unsupported type '%s' for attribute '%s'. Attribute values must be of type String, Boolean, or Integer, or implement %s.",
+            "Unsupported type '%s' for attribute '%s'. Attribute values must be of type String, Boolean, a subtype of Number, or implement %s.",
             type.getName(), attributeName, Named.class.getName()
         );
     }
