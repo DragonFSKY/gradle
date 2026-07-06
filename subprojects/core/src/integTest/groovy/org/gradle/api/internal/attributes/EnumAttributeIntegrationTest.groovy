@@ -807,7 +807,7 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
     // endregion enum-as-JVM-singleton
     // endregion enums succeed
 
-    // region enums fail
+    // region un-named enums fail
     // -------------------------------------------------------------------------
     // The reported detached-configuration regression (now caught up front by
     // Attribute.of), plus enum-semantics consequences where both flavors fail — plain at
@@ -963,5 +963,5 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
         PLAIN_DESC | PLAIN_ENUM  | UNSUPPORTED_TYPE_MSG
         NAMED_DESC | NAMED_ENUM  | "No enum constant MyEnum.NOT_A_CONSTANT"
     }
-    // endregion
+    // endregion un-named enums fail
 }
