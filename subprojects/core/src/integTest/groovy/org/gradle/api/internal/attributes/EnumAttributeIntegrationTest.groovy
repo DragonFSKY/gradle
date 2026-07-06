@@ -814,7 +814,7 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
     // Attribute.of, Named at the JDK's Enum.valueOf when the wire value doesn't match a
     // constant of the requested enum type.
     // -------------------------------------------------------------------------
-    def "task-input on a detached configuration with a #enumDesc attribute value (regression from Gradle 9.5.1)"() {
+    def "task-input on a detached configuration with a #enumDesc attribute value (regression from Gradle 9.5.1) (#enumDesc)"() {
         // Reproducer for the ClassCastException reported by the Elasticsearch team:
         // With enforcement now at Attribute.of (invoked during script evaluation), a plain
         // enum is rejected before Gradle even attempts to configure the detached
@@ -854,7 +854,7 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
         NAMED_DESC | NAMED_ENUM  | true
     }
 
-    def "consequence (#enumDesc): enum constants are compile-time closed — producer offers a constant absent from the consumer's enum"() {
+    def "enum constants are compile-time closed — producer offers a constant absent from the consumer's enum (#enumDesc)"() {
         // The producer publishes a variant using MyEnum.BAR. The consumer's MyEnum
         // has only FOO. Consumer-side coercion calls `Enum.valueOf(consumer.MyEnum, "BAR")`
         // which raises `IllegalArgumentException: No enum constant MyEnum.BAR`. This
@@ -912,7 +912,7 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
         "Named-implementing" | "enum MyEnum implements Named { FOO, BAR;\n@Override String getName() { return name() } }" | "enum MyEnum implements Named { FOO;\n@Override String getName() { return name() } }" | "No enum constant MyEnum.BAR"
     }
 
-    def "consequence (#enumDesc): GMM value that is not a valid enum constant fails coercion"() {
+    def "GMM value that is not a valid enum constant fails coercion (#enumDesc)"() {
         // The GMM wire attribute value must be exactly a constant name of the consumer's
         // enum type. Any drift (typo, renamed constant, spurious value from a
         // component-metadata rule) surfaces as the raw JDK IAE. Named subtypes have no
@@ -962,6 +962,431 @@ final class EnumAttributeIntegrationTest extends AbstractIntegrationSpec {
         enumDesc   | enumDecl    | expectedCause
         PLAIN_DESC | PLAIN_ENUM  | UNSUPPORTED_TYPE_MSG
         NAMED_DESC | NAMED_ENUM  | "No enum constant MyEnum.NOT_A_CONSTANT"
+    }
+
+    def "publishing a variant with a #enumDesc-typed attribute to a Maven repository (#enumDesc)"() {
+        // Exercises the producer-side publishing pipeline via maven-publish.
+        // GradleModuleMetadataWriter → ModuleMetadataSpecBuilder.attributeValueFor already
+        // handles Enum values by name (line 391-392), but Attribute.of rejects plain enums
+        // upstream — so the plain row fails at script eval on the producer side.
+        given:
+        file("output.txt") << "sample output"
+        buildFile("""
+            plugins { id 'maven-publish' }
+
+            ${enumDecl}
+            def ATTRIBUTE_TYPE = Attribute.of("myEnumAttribute", MyEnum.class)
+
+            group = 'org.example'
+            version = '1.0'
+
+            def myVariant = configurations.consumable("myVariant") {
+                attributes { attribute(ATTRIBUTE_TYPE, MyEnum.FOO) }
+                outgoing.artifact(file("output.txt"))
+            }
+
+            def component = publishing.softwareComponentFactory.adhoc("myComponent")
+            component.addVariantsFromConfiguration(myVariant.get()) {
+                mapToMavenScope("runtime")
+            }
+            components.add(component)
+
+            publishing {
+                repositories { maven { url = uri("${mavenRepo.uri}") } }
+                publications {
+                    maven(MavenPublication) { from components.myComponent }
+                }
+            }
+        """)
+
+        expect:
+        expectResolve("publish", implementsNamed)
+
+        where:
+        enumDesc   | enumDecl    | implementsNamed
+        PLAIN_DESC | PLAIN_ENUM  | false
+        NAMED_DESC | NAMED_ENUM  | true
+    }
+
+    def "resolution emits build operations with a #enumDesc attribute value"() {
+        // Probes AttributesToMapConverter.getAttributeValueAsString: the build-op path
+        // uses value.toString() as a fallback (line 61), which for an enum yields the
+        // constant name. Any successful resolution emits build operations that carry
+        // the attribute container through this code path.
+        given:
+        settingsFile("include 'consumer', 'producer'")
+
+        file("producer/output.txt") << "sample output"
+        buildFile("producer/build.gradle", """
+            ${enumDecl}
+            def ATTRIBUTE_TYPE = Attribute.of("myEnumAttribute", MyEnum.class)
+
+            configurations {
+                consumable("myVariant") {
+                    attributes { attribute(ATTRIBUTE_TYPE, MyEnum.FOO) }
+                    outgoing.artifact(file("output.txt"))
+                }
+            }
+        """)
+
+        buildFile("consumer/build.gradle", """
+            ${enumDecl}
+            def ATTRIBUTE_TYPE = Attribute.of("myEnumAttribute", MyEnum.class)
+
+            configurations {
+                dependencyScope("myDeps")
+                resolvable("myResolver") {
+                    extendsFrom(configurations.getByName("myDeps"))
+                    attributes { attribute(ATTRIBUTE_TYPE, MyEnum.FOO) }
+                }
+            }
+
+            dependencies { myDeps(project(":producer")) }
+
+            tasks.register("resolve") {
+                def files = configurations.myResolver.incoming.files
+                doLast { files.each { println("Resolved: " + it.name) } }
+            }
+        """)
+
+        expect:
+        expectResolve(":consumer:resolve", implementsNamed, ["Resolved: output.txt"])
+
+        where:
+        enumDesc   | enumDecl    | implementsNamed
+        PLAIN_DESC | PLAIN_ENUM  | false
+        NAMED_DESC | NAMED_ENUM  | true
+    }
+
+    def "resolution build-op result desugars a #enumDesc attribute via toString"() {
+        // Probes ResolveConfigurationResolutionBuildOperationResult.desugarAttributes
+        // (line 100-128), which has its own desugaring: primitives, then Named, then a
+        // .toString() fallback (line 124). Enums fall into the fallback branch.
+        given:
+        settingsFile("include 'consumer', 'producer'")
+
+        file("producer/output.txt") << "sample output"
+        buildFile("producer/build.gradle", """
+            ${enumDecl}
+            def ATTRIBUTE_TYPE = Attribute.of("myEnumAttribute", MyEnum.class)
+
+            configurations {
+                consumable("myVariant") {
+                    attributes { attribute(ATTRIBUTE_TYPE, MyEnum.FOO) }
+                    outgoing.artifact(file("output.txt"))
+                }
+            }
+        """)
+
+        buildFile("consumer/build.gradle", """
+            ${enumDecl}
+            def ATTRIBUTE_TYPE = Attribute.of("myEnumAttribute", MyEnum.class)
+
+            configurations {
+                dependencyScope("myDeps")
+                resolvable("myResolver") {
+                    extendsFrom(configurations.getByName("myDeps"))
+                    attributes { attribute(ATTRIBUTE_TYPE, MyEnum.FOO) }
+                }
+            }
+
+            dependencies { myDeps(project(":producer")) }
+
+            tasks.register("resolve") {
+                def rootProvider = configurations.myResolver.incoming.resolutionResult.rootComponent
+                doLast {
+                    def root = rootProvider.get()
+                    println("Root: " + root.moduleVersion)
+                }
+            }
+        """)
+
+        expect:
+        expectResolve(":consumer:resolve", implementsNamed, ["Root: "])
+
+        where:
+        enumDesc   | enumDecl    | implementsNamed
+        PLAIN_DESC | PLAIN_ENUM  | false
+        NAMED_DESC | NAMED_ENUM  | true
+    }
+
+    def "component metadata rule adds a #enumDesc attribute to a resolved module"() {
+        // A component metadata rule mutates the resolved graph's attributes at rule
+        // execution time. The rule references MyEnum inside its execute() body — but the
+        // consumer script's own Attribute.of call fires first at script eval for plain
+        // enums.
+        given:
+        mavenRepo.module("org.example", "producer", "1.0")
+            .withModuleMetadata()
+            .withoutDefaultVariants()
+            .variant("myVariant", [:]) {
+                artifact("producer-1.0.jar")
+            }
+            .publish()
+
+        buildFile("""
+            ${enumDecl}
+            def ATTRIBUTE_TYPE = Attribute.of("myEnumAttribute", MyEnum.class)
+
+            repositories { maven { url = uri("${mavenRepo.uri}") } }
+
+            abstract class AddEnumAttributeRule implements ComponentMetadataRule {
+                @Override
+                void execute(ComponentMetadataContext ctx) {
+                    def attr = Attribute.of("myEnumAttribute", MyEnum.class)
+                    ctx.details.allVariants {
+                        attributes { attribute(attr, MyEnum.FOO) }
+                    }
+                }
+            }
+
+            dependencies {
+                components {
+                    withModule("org.example:producer", AddEnumAttributeRule)
+                }
+            }
+
+            configurations {
+                dependencyScope("myDeps")
+                resolvable("myResolver") {
+                    extendsFrom(configurations.getByName("myDeps"))
+                    attributes { attribute(ATTRIBUTE_TYPE, MyEnum.FOO) }
+                }
+            }
+
+            dependencies { myDeps("org.example:producer:1.0") }
+
+            tasks.register("resolve") {
+                def files = configurations.myResolver.incoming.files
+                doLast { files.each { println("Resolved: " + it.name) } }
+            }
+        """)
+
+        expect:
+        expectResolve("resolve", implementsNamed, ["Resolved: producer-1.0.jar"])
+
+        where:
+        enumDesc   | enumDecl    | implementsNamed
+        PLAIN_DESC | PLAIN_ENUM  | false
+        NAMED_DESC | NAMED_ENUM  | true
+    }
+
+    def "materializing resolutionResult with a #enumDesc on an external Maven dependency"() {
+        // The 'materializing resolutionResult…on a local project dependency' test above uses
+        // a local project dep, which sidesteps the streaming serializer path. External Maven
+        // deps stream through StreamingResolutionResultBuilder → DesugaringAttributeContainerSerializer,
+        // so this variant probes a distinct pipeline that's closer to the ES/9.5.1 regression.
+        given:
+        mavenRepo.module("org.example", "producer", "1.0")
+            .withModuleMetadata()
+            .withoutDefaultVariants()
+            .variant("myVariant", [myEnumAttribute: "FOO"]) {
+                artifact("producer-1.0.jar")
+            }
+            .publish()
+
+        buildFile("""
+            ${enumDecl}
+            def ATTRIBUTE_TYPE = Attribute.of("myEnumAttribute", MyEnum.class)
+
+            repositories { maven { url = uri("${mavenRepo.uri}") } }
+
+            configurations {
+                dependencyScope("myDeps")
+                resolvable("myResolver") {
+                    extendsFrom(configurations.getByName("myDeps"))
+                    attributes { attribute(ATTRIBUTE_TYPE, MyEnum.FOO) }
+                }
+            }
+
+            dependencies { myDeps("org.example:producer:1.0") }
+
+            tasks.register("resolve") {
+                def rootProvider = configurations.myResolver.incoming.resolutionResult.rootComponent
+                doLast {
+                    def root = rootProvider.get()
+                    println("Root: " + root.moduleVersion)
+                    root.dependencies.each { d -> println("Dep: " + d) }
+                }
+            }
+        """)
+
+        expect:
+        expectResolve("resolve", implementsNamed, ["Dep: org.example:producer:1.0"])
+
+        where:
+        enumDesc   | enumDecl    | implementsNamed
+        PLAIN_DESC | PLAIN_ENUM  | false
+        NAMED_DESC | NAMED_ENUM  | true
+    }
+
+    def "deduplicated serialization when multiple variants share a #enumDesc attribute container"() {
+        // DeduplicatingAttributeContainerSerializer wraps DesugaringAttributeContainerSerializer
+        // and interns identical attribute containers on write. Two variants with overlapping
+        // attribute sets exercise the dedup path. Requires the streaming resolution result to
+        // be materialized to hit the wrapper.
+        given:
+        mavenRepo.module("org.example", "producer", "1.0")
+            .withModuleMetadata()
+            .withoutDefaultVariants()
+            .variant("variant1", [myEnumAttribute: "FOO", tag: "one"]) {
+                artifact("producer-1.0-a.jar")
+            }
+            .variant("variant2", [myEnumAttribute: "FOO", tag: "two"]) {
+                artifact("producer-1.0-b.jar")
+            }
+            .publish()
+
+        buildFile("""
+            ${enumDecl}
+            def ATTRIBUTE_TYPE = Attribute.of("myEnumAttribute", MyEnum.class)
+            def TAG_ATTR = Attribute.of("tag", String.class)
+
+            repositories { maven { url = uri("${mavenRepo.uri}") } }
+
+            configurations {
+                dependencyScope("myDeps")
+                resolvable("myResolver") {
+                    extendsFrom(configurations.getByName("myDeps"))
+                    attributes {
+                        attribute(ATTRIBUTE_TYPE, MyEnum.FOO)
+                        attribute(TAG_ATTR, "one")
+                    }
+                }
+            }
+
+            dependencies { myDeps("org.example:producer:1.0") }
+
+            tasks.register("resolve") {
+                def rootProvider = configurations.myResolver.incoming.resolutionResult.rootComponent
+                doLast {
+                    def root = rootProvider.get()
+                    println("Root: " + root.moduleVersion)
+                }
+            }
+        """)
+
+        expect:
+        expectResolve("resolve", implementsNamed, ["Root: "])
+
+        where:
+        enumDesc   | enumDecl    | implementsNamed
+        PLAIN_DESC | PLAIN_ENUM  | false
+        NAMED_DESC | NAMED_ENUM  | true
+    }
+
+    def "resolvable configuration inheriting a #enumDesc attribute via extendsFrom"() {
+        // Attribute inheritance goes through the container's addAllLater / concat chain,
+        // which doesn't touch the desugaring serializer. Any failure comes from Attribute.of
+        // during script eval, not from any downstream serialization.
+        given:
+        settingsFile("include 'consumer', 'producer'")
+
+        file("producer/output.txt") << "sample output"
+        buildFile("producer/build.gradle", """
+            ${enumDecl}
+            def ATTRIBUTE_TYPE = Attribute.of("myEnumAttribute", MyEnum.class)
+
+            configurations {
+                consumable("myVariant") {
+                    attributes { attribute(ATTRIBUTE_TYPE, MyEnum.FOO) }
+                    outgoing.artifact(file("output.txt"))
+                }
+            }
+        """)
+
+        buildFile("consumer/build.gradle", """
+            ${enumDecl}
+            def ATTRIBUTE_TYPE = Attribute.of("myEnumAttribute", MyEnum.class)
+
+            configurations {
+                dependencyScope("myDeps")
+                resolvable("myBase") {
+                    extendsFrom(configurations.getByName("myDeps"))
+                    attributes { attribute(ATTRIBUTE_TYPE, MyEnum.FOO) }
+                }
+                resolvable("myResolver") {
+                    extendsFrom(configurations.getByName("myBase"))
+                }
+            }
+
+            dependencies { myDeps(project(":producer")) }
+
+            tasks.register("resolve") {
+                def files = configurations.myResolver.incoming.artifactView {}.files
+                doLast { files.each { println("Resolved: " + it.name) } }
+            }
+        """)
+
+        expect:
+        expectResolve(":consumer:resolve", implementsNamed, ["Resolved: output.txt"])
+
+        where:
+        enumDesc   | enumDecl    | implementsNamed
+        PLAIN_DESC | PLAIN_ENUM  | false
+        NAMED_DESC | NAMED_ENUM  | true
+    }
+
+    def "registering a #enumDesc-typed attribute in the attributes schema"() {
+        // Registering an attribute in the schema (dependencies.attributesSchema { attribute(...) })
+        // walks through DefaultAttributesSchema.attribute(...). The consumer script's own
+        // Attribute.of call fires the validation first, so plain row fails identically to
+        // other consumer-side plain rows.
+        given:
+        settingsFile("include 'consumer', 'producer'")
+
+        file("producer/output.txt") << "sample output"
+        buildFile("producer/build.gradle", """
+            ${enumDecl}
+            def ATTRIBUTE_TYPE = Attribute.of("myEnumAttribute", MyEnum.class)
+
+            dependencies {
+                attributesSchema {
+                    attribute(ATTRIBUTE_TYPE)
+                }
+            }
+
+            configurations {
+                consumable("myVariant") {
+                    attributes { attribute(ATTRIBUTE_TYPE, MyEnum.FOO) }
+                    outgoing.artifact(file("output.txt"))
+                }
+            }
+        """)
+
+        buildFile("consumer/build.gradle", """
+            ${enumDecl}
+            def ATTRIBUTE_TYPE = Attribute.of("myEnumAttribute", MyEnum.class)
+
+            dependencies {
+                attributesSchema {
+                    attribute(ATTRIBUTE_TYPE)
+                }
+            }
+
+            configurations {
+                dependencyScope("myDeps")
+                resolvable("myResolver") {
+                    extendsFrom(configurations.getByName("myDeps"))
+                    attributes { attribute(ATTRIBUTE_TYPE, MyEnum.FOO) }
+                }
+            }
+
+            dependencies { myDeps(project(":producer")) }
+
+            tasks.register("resolve") {
+                def files = configurations.myResolver.incoming.artifactView {}.files
+                doLast { files.each { println("Resolved: " + it.name) } }
+            }
+        """)
+
+        expect:
+        expectResolve(":consumer:resolve", implementsNamed, ["Resolved: output.txt"])
+
+        where:
+        enumDesc   | enumDecl    | implementsNamed
+        PLAIN_DESC | PLAIN_ENUM  | false
+        NAMED_DESC | NAMED_ENUM  | true
     }
     // endregion un-named enums fail
 }
