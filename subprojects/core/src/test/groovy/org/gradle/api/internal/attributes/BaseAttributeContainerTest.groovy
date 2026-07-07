@@ -19,6 +19,7 @@ package org.gradle.api.internal.attributes
 import org.gradle.api.Named
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.attributes.AttributeContainer
+import org.gradle.api.attributes.IllegalAttributeTypeException
 import org.gradle.api.logging.LogLevel
 import org.gradle.api.logging.configuration.WarningMode
 import org.gradle.internal.classloader.ClasspathUtil
@@ -107,7 +108,7 @@ import spock.lang.Specification
         }
     }
 
-    def "can't contain 2 identically named attributes with the same type loaded from different classloaders"() {
+    def "can't load Named in a second classloader to make an attribute value"() {
         given: "a second classloader, that has no parent, and can load the Named class"
 
         URL[] urls = [Named.class, MyNamed.class].collect {
@@ -139,14 +140,7 @@ import spock.lang.Specification
         container.keySet() // Realize elements of the container
 
         then:
-        def exception = thrown(Exception)
-        if (exception instanceof AttributeMergingException) {
-            assert exception.message == "An attribute named 'test' of type 'org.gradle.api.Named' already exists in this container"
-        } else if (container instanceof ImmutableAttributes) {
-            assert exception.message == "Cannot have two attributes with the same name but different types. This container already has an attribute named 'test' of type 'org.gradle.api.Named' and you are trying to store another one of type 'org.gradle.api.Named'"
-        } else {
-            assert exception.message == "Cannot have two attributes with the same name but different types. This container has an attribute named 'test' of type 'org.gradle.api.Named' and another attribute of type 'org.gradle.api.Named'"
-        }
+        def exception = thrown(IllegalAttributeTypeException)
+        assert exception.message == "Unsupported type 'org.gradle.api.Named' for attribute 'test'. Attribute values must be of type String, Boolean, a subtype of Number, or implement org.gradle.api.Named."
     }
-
 }
