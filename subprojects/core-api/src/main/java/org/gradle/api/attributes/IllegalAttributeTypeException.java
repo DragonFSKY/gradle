@@ -34,7 +34,7 @@ import java.util.List;
  * When the offending type is a plain Java {@link Enum} that does not implement {@link Named}, an
  * additional resolution suggesting that the enum implement {@link Named} is provided first.
  *
- * @since 9.7.0
+ * @since 9.8.0
  */
 @Incubating
 public final class IllegalAttributeTypeException extends IllegalArgumentException implements ResolutionProvider {
