@@ -195,6 +195,22 @@ To fix it, use a standard collection or map type instead of a custom subtype, an
 
 See <<configuration_cache_requirements.adoc#config_cache:requirements:custom_collection_types, Custom Collection and Map Types>> for details.
 
+[[kgp_native_bundle_attribute_enum]]
+==== Deprecation of using `KotlinNativeBundleArtifactsTypes` as an attribute value type
+
+The Kotlin Gradle Plugin (KGP) versions 2.0.20 and 2.0.21 register an attribute of type `org.jetbrains.kotlin.gradle.targets.native.toolchain.KotlinNativeBundleArtifactFormat.KotlinNativeBundleArtifactsTypes` — a plain Java `Enum` that does not implement `org.gradle.api.Named`.
+
+Plain enum types are no longer supported as attribute value types.
+Attribute value types must be one of: `String`, `Boolean`, a subtype of `Number`, or a type that implements `org.gradle.api.Named`.
+
+To preserve compatibility with builds that use KGP 2.0.20 or 2.0.21, Gradle temporarily allows this specific enum with a deprecation warning.
+The special case will be removed in Gradle 10, at which point an `IllegalAttributeTypeException` will be thrown at `Attribute.of(...)` time.
+
+To fix builds affected by this deprecation, upgrade the Kotlin Gradle Plugin to 2.2.0 or later.
+Newer KGP versions do not use a plain enum for this attribute and are unaffected.
+
+See the <<variant_attributes.adoc#sec:standard_attributes, variant attributes documentation>> for the full set of supported attribute value types.
+
 [[changes_9.6.0]]
 == Upgrading from 9.5.0 and earlier
 

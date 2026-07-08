@@ -153,12 +153,22 @@ class KotlinPluginAppliedWithOlderGradleVersionsIntegrationTest(
             """
         )
 
-        inDirectory(file("plugin"))
+        val result = inDirectory(file("plugin"))
             .withTasks("publish")
             .withJavaHome(jdk.javaHome.absolutePath)
             .noDeprecationChecks() // KGP emits deprecation warnings that vary by version and are not what we test here.
             .withStackTraceChecksDisabled() // The Kotlin compiler daemon intermittently crashes and logs a stack trace before falling back; that's not what we test here.
             .run()
+
+        // KGP 2.0.20 and 2.0.21 register an attribute whose type is a plain enum
+        // (KotlinNativeBundleArtifactFormat.KotlinNativeBundleArtifactsTypes). Gradle allows
+        // this via a targeted compatibility exception in Attribute.of and emits a deprecation
+        // warning. Verify the warning is present for those specific KGP versions.
+        if (kgpVersion == "2.0.20" || kgpVersion == "2.0.21") {
+            result.assertOutputContains(
+                "Using the enum type KotlinNativeBundleArtifactsTypes as an attribute value type has been deprecated."
+            )
+        }
     }
 
     private fun applyPlugin(jdk: Jvm): ExecutionResult {

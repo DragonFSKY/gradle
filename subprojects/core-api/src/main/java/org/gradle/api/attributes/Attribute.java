@@ -17,6 +17,7 @@
 package org.gradle.api.attributes;
 
 import org.gradle.api.Named;
+import org.gradle.internal.deprecation.DeprecationLogger;
 
 /**
  * An attribute is a named entity with a type. It is used in conjunction with a {@link AttributeContainer}
@@ -55,8 +56,27 @@ public class Attribute<T> implements Named {
         return new Attribute<T>(name, type);
     }
 
+    /**
+     * Fully-qualified name of a plain enum used as an attribute value type by Kotlin Gradle Plugin
+     * versions 2.0.20 and 2.0.21. Newer KGP versions (2.2.0+) do not use this enum. To preserve
+     * compatibility with those two specific KGP versions, this exact class name is allowed to pass
+     * {@link #validateSupportedType(String, Class)} with a deprecation warning instead of an error.
+     * <p>
+     * This special case should be removed when compatibility with KGP 2.0.20/2.0.21 is no longer required.
+     */
+    private static final String KGP_NATIVE_BUNDLE_ENUM_FQN =
+        "org.jetbrains.kotlin.gradle.targets.native.toolchain.KotlinNativeBundleArtifactFormat$KotlinNativeBundleArtifactsTypes";
+
     private static void validateSupportedType(String name, Class<?> type) {
         if (type == String.class || type == Boolean.class || Number.class.isAssignableFrom(type) || Named.class.isAssignableFrom(type)) {
+            return;
+        }
+        if (KGP_NATIVE_BUNDLE_ENUM_FQN.equals(type.getName())) {
+            DeprecationLogger.deprecate("Using the enum type KotlinNativeBundleArtifactsTypes as an attribute value type")
+                .withContext("This enum does not implement Named. All Enums used as Attribute values should implement Named. This enum type is used by Kotlin Gradle Plugin 2.0.20 and 2.0.21. Upgrade to KGP 2.2.0 or later, in which the plugin no longer uses a plain enum for this attribute.")
+                .willBecomeAnErrorInGradle10()
+                .withUpgradeGuideSection(9, "kgp_native_bundle_attribute_enum")
+                .nagUser();
             return;
         }
         throwIllegalAttributeType(name, type);
