@@ -77,6 +77,11 @@ import static org.gradle.architecture.test.ArchUnitFixture.public_api_methods;
 @SuppressWarnings("deprecation") // references deprecated software-model API
 public class ProviderMigrationArchitectureTest {
 
+    private static final DescribedPredicate<JavaMethod> non_list_nested_properties = and(
+        annotatedMaybeInSupertypeWith(Nested.class),
+        not(have(rawReturnType(List.class)))
+    );
+
     private static final DescribedPredicate<JavaClass> class_with_any_mutable_property = new DescribedPredicate<JavaClass>("class with any mutable property") {
         @Override
         public boolean test(JavaClass input) {
@@ -97,6 +102,7 @@ public class ProviderMigrationArchitectureTest {
         .and(are(declaredIn(class_with_any_mutable_property)))
         .and(are(ArchUnitFixture.getters))
         .and(not(annotatedWith(Inject.class)))
+        .and(not(non_list_nested_properties))
         .as("mutable public API properties");
 
     @SuppressWarnings({"deprecation", "UnnecessaryFullyQualifiedName"})
@@ -155,10 +161,7 @@ public class ProviderMigrationArchitectureTest {
         // Skip types that are not to be migrated
         .and(not(declaredIn(annotatedWith(NotToBeMigratedToLazy.class))))
         // Skip Nested properties that are not Iterables
-        .and(not(and(
-            annotatedMaybeInSupertypeWith(Nested.class),
-            not(have(rawReturnType(List.class)))
-        )))
+        .and(not(non_list_nested_properties))
         // A lazy type
         .and(not(declaredIn(ConfigurableFileTree.class)))
         // Exceptions should not be upgraded
